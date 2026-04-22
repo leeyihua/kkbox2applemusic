@@ -140,20 +140,64 @@ _NON_ORIGINAL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# 專輯名稱中的 OST / 原聲帶等詞彙，提取關鍵字時移除
+_ALBUM_NOISE_RE = re.compile(r"原聲帶|原声带|影視原聲|影视原声|OST|Soundtrack")
 
-def _score_candidate(search_name: str, original_artist: str, candidate: dict) -> float:
-    """根據歌名與藝人（含所有變體）計算最佳比對分數。"""
+
+def _extract_album_keyword(album: str) -> str:
+    """從 KKBOX 專輯名稱提取搜尋關鍵字，用於 Various Artists 歌曲的輔助比對。
+
+    Examples:
+        "《逐玉》 影视原声带"  → "逐玉"
+        "逐玉原聲帶"           → "逐玉"
+        "葉惠美"               → "葉惠美"
+        ""                     → ""
+    """
+    if not album:
+        return ""
+    # 優先取書名號 《》〈〉 內的內容
+    m = re.search(r"[《〈【「](.+?)[》〉】」]", album)
+    if m:
+        return m.group(1)
+    # 移除 OST/原聲帶等詞彙後回傳剩餘
+    return _ALBUM_NOISE_RE.sub("", album).strip()
+
+
+_VARIOUS_ARTISTS = frozenset(["Various Artists", "群星", ""])
+
+
+def _score_candidate(
+    search_name: str,
+    original_artist: str,
+    candidate: dict,
+    original_album: str = "",
+) -> float:
+    """根據歌名、藝人（含所有變體）計算最佳比對分數。
+
+    對 Various Artists 歌曲，改用專輯關鍵字相似度作為藝人分數的依據，
+    避免因藝人資訊缺失而將熱門同名歌曲誤判為正確結果。
+    """
     result_name = candidate.get("trackName", "")
     result_artist = candidate.get("artistName", "")
+    result_album = candidate.get("collectionName", "")
 
     n_score = _name_score(search_name, result_name)
 
-    if original_artist:
+    if original_artist in _VARIOUS_ARTISTS:
+        # Various Artists：用專輯關鍵字相似度替代固定中性分
+        album_kw = _extract_album_keyword(original_album)
+        if album_kw and result_album:
+            al_sim = _similarity(album_kw, result_album)
+            # 關鍵字出現在結果專輯中（子字串），給予高分
+            if album_kw in result_album or result_album in album_kw:
+                al_sim = max(al_sim, 0.8)
+            a_score = max(0.5, al_sim)  # 至少保留中性分
+        else:
+            a_score = 0.5
+    else:
         a_score = max(
             _similarity(v, result_artist) for v in _artist_variants(original_artist)
         )
-    else:
-        a_score = 0.5  # 無藝人（Various Artists）給中性分
 
     score = n_score * 0.65 + a_score * 0.35
 
@@ -261,6 +305,12 @@ async def match_song(
             queries.append((song.name, av))
     queries.append((stripped, ""))  # 純歌名回退
 
+    # Various Artists：加入「歌名 + 專輯關鍵字」搜尋，幫助找到正確的 OST 版本
+    if song.artist in _VARIOUS_ARTISTS and song.album:
+        album_kw = _extract_album_keyword(song.album)
+        if album_kw:
+            queries.append((stripped, album_kw))
+
     seen: set[str] = set()
     best_candidate: dict | None = None
     best_score = 0.0
@@ -273,7 +323,7 @@ async def match_song(
 
         candidates = await _search(term, client, country, limit, dev_token)
         for c in candidates:
-            score = _score_candidate(search_name, song.artist, c)
+            score = _score_candidate(search_name, song.artist, c, song.album)
             if score > best_score:
                 best_score = score
                 best_candidate = c

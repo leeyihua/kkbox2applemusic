@@ -7,6 +7,8 @@ import httpx
 from kkbox2applemusic.matcher import (
     ITUNES_SEARCH_URL,
     _artist_variants,
+    _extract_album_keyword,
+    _score_candidate,
     _strip_song_name,
     match_song,
 )
@@ -124,6 +126,34 @@ async def test_match_song_with_subtitle_strips_and_finds():
     assert result.apple_track_name == "幸福在歌唱"
 
 
+# ── _extract_album_keyword ────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("album, expected", [
+    ("《逐玉》 影视原声带",  "逐玉"),
+    ("逐玉原聲帶",           "逐玉"),
+    ("葉惠美",               "葉惠美"),
+    ("",                     ""),
+    ("【難哄】OST",          "難哄"),
+])
+def test_extract_album_keyword(album, expected):
+    assert _extract_album_keyword(album) == expected
+
+
+# ── Various Artists 評分應使用專輯關鍵字 ────────────────────────────────────
+
+def test_score_various_artists_prefers_ost_album():
+    """Various Artists 歌曲：專輯關鍵字吻合的候選應得到比同名熱門歌曲更高的分數。"""
+    wrong = {"trackName": "一念", "artistName": "三妹",   "collectionName": "一念 - Single"}
+    right = {"trackName": "一念", "artistName": "張紫寧", "collectionName": "逐玉原聲帶"}
+
+    wrong_score = _score_candidate("一念", "Various Artists", wrong, "《逐玉》 影视原声带")
+    right_score = _score_candidate("一念", "Various Artists", right, "《逐玉》 影视原声带")
+
+    assert right_score > wrong_score, (
+        f"正確 OST 版本應得分更高：right={right_score:.3f} wrong={wrong_score:.3f}"
+    )
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_match_song_various_artists_searches_by_name():
@@ -140,6 +170,38 @@ async def test_match_song_various_artists_searches_by_name():
         result = await match_song(song, client)
 
     assert result.matched is True
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_match_song_various_artists_with_album_prefers_ost():
+    """Various Artists 且有專輯名稱時，OST 版本應優先於同名熱門歌曲。"""
+    song = Song(
+        name="一念 (影视剧《逐玉》插曲)",
+        artist="Various Artists",
+        album="《逐玉》 影视原声带",
+        kkbox_id="1400711221",
+        track_id="abc",
+    )
+    # API 回傳兩個候選：熱門同名歌曲 + 正確 OST 版本
+    response = {
+        "resultCount": 2,
+        "results": [
+            {"trackId": 1763029229, "trackName": "一念", "artistName": "三妹",
+             "collectionName": "一念 - Single", "trackViewUrl": ""},
+            {"trackId": 888000001,  "trackName": "一念", "artistName": "張紫寧",
+             "collectionName": "逐玉原聲帶", "trackViewUrl": ""},
+        ],
+    }
+    respx.get(ITUNES_SEARCH_URL).mock(return_value=httpx.Response(200, json=response))
+
+    async with httpx.AsyncClient() as client:
+        result = await match_song(song, client)
+
+    assert result.matched is True
+    assert result.apple_track_id == 888000001, (
+        f"應選中 OST 版本（張紫寧），但選中了 {result.apple_artist}/{result.apple_album}"
+    )
 
 
 @pytest.mark.asyncio
