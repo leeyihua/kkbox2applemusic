@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from .exporter import export_applescript, export_csv, export_itunes_xml, export_txt, export_unmatched_log
+from .exporter import export_csv, export_txt, export_unmatched_log
 from .matcher import MatchResult, match_all
 from .parser import parse_kbl
 
@@ -137,16 +137,8 @@ def convert(
     csv_path = output_dir / f"{safe_name}.csv"
     log_path = output_dir / "unmatched.log"
 
-    script_path = output_dir / f"{safe_name}.applescript"
-    script_count = export_applescript(results, script_path, playlist_name)
-    console.print(f"[green]AppleScript（{script_count} 首，建議使用）：[/green]{script_path}")
-
-    xml_path = output_dir / f"{safe_name}.xml"
-    xml_count = export_itunes_xml(results, xml_path, playlist_name)
-    console.print(f"[dim]XML 備用（{xml_count} 首）：[/dim]{xml_path}")
-
     txt_count = export_txt(results, txt_path)
-    console.print(f"[dim]TXT 備用（{txt_count} 首）：[/dim]{txt_path}")
+    console.print(f"[dim]TXT（{txt_count} 首）：[/dim]{txt_path}")
 
     export_csv(results, csv_path)
     console.print(f"[dim]CSV 參考：[/dim]{csv_path}")
