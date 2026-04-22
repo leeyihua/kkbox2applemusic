@@ -1,0 +1,56 @@
+<utf-8_data>
+  <kkbox_package>
+    <kkbox_ver>26.4.2</kkbox_ver>
+    <playlist>
+      <playlist_id>1</playlist_id>
+      <playlist_name>測試播放清單</playlist_name>
+      <playlist_descr/>
+      <playlist_data>
+        <song_data>
+          <song_name>晴天</song_name>
+          <song_artist>周杰倫 (Jay Chou)</song_artist>
+          <song_album>葉惠美</song_album>
+          <song_preference>0</song_preference>
+          <song_pathname>849514</song_pathname>
+          <song_type>1</song_type>
+          <song_lyricsexist>1</song_lyricsexist>
+          <song_song_idx>3</song_song_idx>
+          <track_id>PYki-YuSNHxJvvfWBT</track_id>
+          <song_playcnt>0</song_playcnt>
+        </song_data>
+        <song_data>
+          <song_name>告白氣球</song_name>
+          <song_artist>周杰倫 (Jay Chou)</song_artist>
+          <song_album>周杰倫的床邊故事</song_album>
+          <song_preference>0</song_preference>
+          <song_pathname>171890544</song_pathname>
+          <song_type>1</song_type>
+          <song_lyricsexist>1</song_lyricsexist>
+          <song_song_idx>8</song_song_idx>
+          <track_id>Kn9Aw92cKmKv6tCogT</track_id>
+          <song_playcnt>0</song_playcnt>
+        </song_data>
+        <song_data>
+          <song_name>光年之外 - 電影&lt;Passengers&gt;中國區主題曲</song_name>
+          <song_artist>G.E.M. 鄧紫棋</song_artist>
+          <song_album>光年之外 - 電影&lt;Passengers&gt;中國區主題曲</song_album>
+          <song_preference>0</song_preference>
+          <song_pathname>220913862</song_pathname>
+          <song_type>1</song_type>
+          <song_lyricsexist>1</song_lyricsexist>
+          <song_song_idx>1</song_song_idx>
+          <track_id>Gnd6zskWJNIVITqscD</track_id>
+          <song_playcnt>0</song_playcnt>
+        </song_data>
+      </playlist_data>
+    </playlist>
+    <package>
+      <descr>Description</descr>
+      <ver>1.1</ver>
+      <packdate>202604210844</packdate>
+      <playlistcnt>1</playlistcnt>
+      <songcnt>3</songcnt>
+      <extended>1</extended>
+    </package>
+  </kkbox_package>
+</utf-8_data>
