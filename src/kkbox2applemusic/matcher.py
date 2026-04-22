@@ -22,7 +22,8 @@ _MEDIA_KEYWORDS = frozenset([
     "電影", "影片", "影集", "電視劇", "劇集", "影视剧", "电视剧",
     "主題曲", "插曲", "片頭曲", "片頭", "片尾曲", "片尾",
     "心動曲", "原唱", "幸福版", "再見版", "音樂產房",
-    "動畫劇集", "三立戲劇", "TVBS連續劇", "星宇航空",
+    "動畫劇集", "三立戲劇", "三立華劇", "TVBS連續劇", "星宇航空",
+    "推廣曲",
 ])
 
 # 括號內應保留（屬於歌名本身）的模式
@@ -30,13 +31,14 @@ _KEEP_PAREN_RE = re.compile(
     r"feat\.|ft\.|1000 Times|\d|跳樓機|若是", re.IGNORECASE
 )
 # 符合影視後綴的 " - ..." 模式
+# 允許劇名等前綴出現在關鍵字前（如「海派甜心片尾曲」、「戲劇「舊金山美容院」片尾曲」）
 _MEDIA_SUFFIX_RE = re.compile(
-    r"\s*[-–—]\s*(?:" + "|".join(re.escape(k) for k in _MEDIA_KEYWORDS) + r")[^-–—]*$"
+    r"\s*[-–—]\s*[^-–—]*?(?:" + "|".join(re.escape(k) for k in _MEDIA_KEYWORDS) + r")[^-–—]*$"
 )
 # Version 後綴（JOLIN Version/...）
 _VERSION_SUFFIX_RE = re.compile(r"\s*[-–—]\s*\w+\s*[Vv]ersion.*$")
-# Live 後綴（座位 - Live）
-_LIVE_SUFFIX_RE = re.compile(r"\s*[-–—]\s*Live\s*$", re.IGNORECASE)
+# Live / 现场 後綴（座位 - Live、訣愛·盡 - 现场）
+_LIVE_SUFFIX_RE = re.compile(r"\s*[-–—]\s*(?:Live|现场|現場)\s*$", re.IGNORECASE)
 
 
 @dataclass
