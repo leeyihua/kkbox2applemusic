@@ -145,6 +145,9 @@ _NON_ORIGINAL_RE = re.compile(
 # 專輯名稱中的 OST / 原聲帶等詞彙，提取關鍵字時移除
 _ALBUM_NOISE_RE = re.compile(r"原聲帶|原声带|影視原聲|影视原声|OST|Soundtrack")
 
+# feat. 後綴（含後面的合作藝人），用於簡化搜尋詞
+_FEAT_SUFFIX_RE = re.compile(r"\s*\bfeat\.\s*.*$", re.IGNORECASE)
+
 
 def _extract_album_keyword(album: str) -> str:
     """從 KKBOX 專輯名稱提取搜尋關鍵字，用於 Various Artists 歌曲的輔助比對。
@@ -312,6 +315,10 @@ async def match_song(
         album_kw = _extract_album_keyword(song.album)
         if album_kw:
             queries.append((stripped, album_kw))
+            # feat. 後可能含特殊字元（如 "W0LF(S)"）干擾搜尋，補一個去掉 feat. 的簡化查詢
+            core = _FEAT_SUFFIX_RE.sub("", stripped).strip()
+            if core and core != stripped:
+                queries.append((core, album_kw))
 
     seen: set[str] = set()
     best_candidate: dict | None = None

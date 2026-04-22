@@ -214,6 +214,45 @@ async def test_match_song_various_artists_with_album_prefers_ost():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_match_song_various_artists_feat_odd_chars_uses_core_name():
+    """feat. 後含特殊字元時，應透過「核心歌名 + 專輯關鍵字」找到正確歌曲。
+
+    "生存遊戲 feat. W0LF(S)五堅情 舊金山美容院" → iTunes 無結果（W0LF(S) 干擾）
+    "生存遊戲 舊金山美容院"                      → 找到動力火車版
+    """
+    song = Song(
+        name="生存遊戲 feat. W0LF(S)五堅情 - 戲劇「舊金山美容院」片尾曲",
+        artist="Various Artists",
+        album="戲劇「舊金山美容院」原聲帶",
+        kkbox_id="x", track_id="y",
+    )
+    correct = {
+        "trackId": 99999,
+        "trackName": "生存遊戲 (feat. 五堅情 WOLF(S)) [戲劇「舊金山美容院」片尾曲]",
+        "artistName": "動力火車",
+        "collectionName": "戲劇「舊金山美容院」原聲帶 - EP",
+        "trackViewUrl": "",
+    }
+
+    def _side_effect(request):
+        term = request.url.params.get("term", "")
+        # 只有去掉 feat. 後的簡化查詢才能找到正確歌曲
+        if "舊金山美容院" in term and "W0LF" not in term:
+            return httpx.Response(200, json={"resultCount": 1, "results": [correct]})
+        return httpx.Response(200, json={"resultCount": 0, "results": []})
+
+    respx.get(ITUNES_SEARCH_URL).mock(side_effect=_side_effect)
+
+    async with httpx.AsyncClient() as client:
+        result = await match_song(song, client)
+
+    assert result.matched is True
+    assert result.apple_track_id == 99999
+    assert result.apple_artist == "動力火車"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_match_song_no_results():
     respx.get(ITUNES_SEARCH_URL).mock(
         return_value=httpx.Response(200, json={"resultCount": 0, "results": []})
