@@ -72,6 +72,7 @@ def _export_and_push(
     token: Optional[str],
     user_token: Optional[str],
     push: bool,
+    conflict: str = "new",
 ) -> None:
     """輸出比對結果並（若指定）推送至 Apple Music。"""
     matched = sum(1 for r in results if r.matched)
@@ -130,6 +131,7 @@ def _export_and_push(
                 push_to_apple_music(
                     results, playlist_name, token, user_token,
                     on_progress=_on_push_progress,
+                    conflict=conflict,
                 )
             )
             console.print(
@@ -180,6 +182,10 @@ def convert(
         False, "--push",
         help="比對完成後直接透過 Apple Music API 推送至你的帳號（需 Apple Developer 憑證）",
     ),
+    conflict: str = typer.Option(
+        "new", "--conflict",
+        help="同名清單衝突處理：new=建立新清單、replace=刪除舊清單後重建、append=加入現有清單",
+    ),
 ) -> None:
     """解析 .kbl 並透過 iTunes Search API（或 Apple Music API）比對歌曲。
 
@@ -200,7 +206,7 @@ def convert(
     console.print(f"播放清單：[cyan]{playlist_name}[/cyan]，共 [bold]{len(songs)}[/bold] 首歌曲")
 
     results = _match_songs(songs, country, token)
-    _export_and_push(results, playlist_name, output_dir, token, user_token, push)
+    _export_and_push(results, playlist_name, output_dir, token, user_token, push, conflict)
 
 
 _CHART_SHORTCUTS: dict[str, str] = {
@@ -247,6 +253,10 @@ def chart(
         False, "--push",
         help="比對完成後直接推送至 Apple Music 帳號（需 Apple Developer 憑證）",
     ),
+    conflict: str = typer.Option(
+        "new", "--conflict",
+        help="同名清單衝突處理：new=建立新清單、replace=刪除舊清單後重建、append=加入現有清單",
+    ),
 ) -> None:
     """從 KKBOX 排行榜抓取歌曲，比對並匯入 Apple Music。
 
@@ -279,4 +289,4 @@ def chart(
         raise typer.Exit(1)
 
     results = _match_songs(songs, country, token)
-    _export_and_push(results, playlist_name, output_dir, token, user_token, push)
+    _export_and_push(results, playlist_name, output_dir, token, user_token, push, conflict)
