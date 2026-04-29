@@ -84,15 +84,12 @@ uv run kkbox2applemusic convert 播放清單.kbl
 
 ## 所有選項
 
-### `chart` 指令
-
-```
-uv run kkbox2applemusic chart [yearly|weekly|daily|URL] [選項]
-```
+### 共用選項（`chart` 與 `convert` 皆支援）
 
 | 選項 | 簡寫 | 預設值 | 說明 |
 |------|------|--------|------|
 | `--push` | | `False` | 直接推送至 Apple Music 帳號 |
+| `--conflict` | | `new` | 同名清單衝突處理（見下方說明）|
 | `--output-dir` | `-o` | `output/` | 輸出目錄 |
 | `--country` | `-c` | `tw` | iTunes Store 地區代碼 |
 | `--key-file` | `-k` | | Apple Developer `.p8` 私鑰路徑（或 `APPLE_KEY_FILE`）|
@@ -101,13 +98,33 @@ uv run kkbox2applemusic chart [yearly|weekly|daily|URL] [選項]
 | `--user-token` | | | Music User Token，跳過瀏覽器授權（或 `APPLE_USER_TOKEN`）|
 | `--dev-token` | | | Developer Token（或 `APPLE_DEV_TOKEN`）|
 
+### `--conflict` 同名清單衝突處理
+
+| 值 | 找到同名清單 | 找不到同名清單 |
+|----|------------|--------------|
+| `new`（預設）| 再建一個新的 | 建新清單 |
+| `replace` | 刪除舊的，重新建立 | 建新清單 |
+| `append` | 直接加入現有清單 | 建新清單 |
+
+```bash
+# 每週更新同一份週榜清單（取代舊的）
+uv run kkbox2applemusic chart weekly --push --conflict replace
+
+# 每天累積到同一份日榜清單
+uv run kkbox2applemusic chart daily --push --conflict append
+```
+
+### `chart` 指令
+
+```
+uv run kkbox2applemusic chart [yearly|weekly|daily|URL] [選項]
+```
+
 ### `convert` 指令
 
 ```
 uv run kkbox2applemusic convert 播放清單.kbl [選項]
 ```
-
-選項與 `chart` 相同。
 
 ## 開發
 

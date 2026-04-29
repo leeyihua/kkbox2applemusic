@@ -91,6 +91,18 @@ src/kkbox2applemusic/
 - 各類型榜單上限：daily=50、weekly=100、yearly=100
 - 短關鍵字對應：`daily` → 華語單曲日榜、`weekly` → 華語單曲週榜、`yearly` → 華語年度新歌累積榜
 
+## 同名播放清單衝突處理（--conflict）
+
+push 時可用 `--conflict` 指定同名清單的處理方式：
+
+| 模式 | 找到同名清單 | 找不到同名清單 |
+|------|------------|--------------|
+| `new`（預設） | 再建一個新的 | 建新清單 |
+| `replace` | 刪除舊的，重新建立 | 建新清單 |
+| `append` | 直接加入現有清單 | 建新清單 |
+
+實作位於 `pusher.py`：`_find_playlist_by_name()`（含分頁搜尋）、`_delete_playlist()`
+
 ## 注意事項
 
 - `.txt` 匯出檔（如 `華語單曲日榜20260420-test2.txt`）存在中文編碼問題，應以 `.kbl` 為主要資料來源
