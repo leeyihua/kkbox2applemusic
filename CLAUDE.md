@@ -40,17 +40,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 常用指令
 
 ```bash
-# 執行轉換（使用免費 iTunes Search API）
-uv run kkbox2applemusic <檔案.kbl>
+# 從 KKBOX 排行榜抓取並推送至 Apple Music
+uv run kkbox2applemusic chart --push          # 華語年度新歌累積榜（預設）
+uv run kkbox2applemusic chart daily --push    # 華語單曲日榜（昨天）
+uv run kkbox2applemusic chart weekly --push   # 華語單曲週榜
+
+# 從 .kbl 檔案轉換
+uv run kkbox2applemusic convert <檔案.kbl>
 
 # 使用 Apple Music API（搜尋結果更精確，需 Apple Developer 帳號）
-uv run kkbox2applemusic <檔案.kbl> \
+uv run kkbox2applemusic convert <檔案.kbl> \
   --key-file AuthKey_XXXXXXXXXX.p8 \
   --key-id XXXXXXXXXX \
   --team-id XXXXXXXXXX
-
-# 指定輸出目錄與地區
-uv run kkbox2applemusic <檔案.kbl> -o my_output/ -c tw
 
 # 執行所有測試
 uv run pytest
@@ -64,20 +66,30 @@ uv run pytest tests/test_parser.py -v
 ```
 src/kkbox2applemusic/
 ├── __init__.py    # 入口點，呼叫 cli.app
-├── cli.py         # typer CLI，整合 parser + matcher + exporter
+├── cli.py         # typer CLI，整合兩個子指令：convert 與 chart
 ├── parser.py      # 解析 .kbl → list[Song]
+├── scraper.py     # 從 KKBOX 排行榜網頁抓取 → list[Song]
 ├── auth.py        # 產生 Apple Music 開發者 JWT Token（ES256）
 ├── matcher.py     # 歌曲比對：優先用 Apple Music API，回退至 iTunes Search API
 └── exporter.py    # 輸出 TXT（主要）+ CSV + unmatched.log
 ```
 
-**資料流**：`.kbl` → `parse_kbl()` → `match_all()` → `export_txt()` / `export_csv()` / `export_unmatched_log()`
+**資料流（.kbl）**：`.kbl` → `parse_kbl()` → `match_all()` → `export_*()` / `push_to_apple_music()`
+
+**資料流（排行榜）**：KKBOX 排行榜 URL → `fetch_chart_songs()` → `match_all()` → `export_*()` / `push_to_apple_music()`
 
 - `matcher.py` 的 `match_all()` 是 async，每首歌之間有 0.5 秒 rate limit 延遲
 - 比對信心分數 < 0.38 視為未匹配；分數由歌名（65%）+ 歌手名（35%）相似度加權
 - 有傳入 `dev_token` 時使用 `api.music.apple.com`，否則使用 `itunes.apple.com/search`
 - Apple Music API 回傳的名稱為 catalog 標準名稱，可大幅提高 Music.app 的識別率
 - `auth.py` 的 `generate_developer_token()` 使用 PyJWT + cryptography 簽署 ES256 JWT
+
+## KKBOX 排行榜爬蟲說明（scraper.py）
+
+- API endpoint：`https://kma.kkbox.com/charts/api/v1/{period}`，不需要認證
+- 日榜需帶 `date`（昨天）參數，當日資料尚未就緒
+- 各類型榜單上限：daily=50、weekly=100、yearly=100
+- 短關鍵字對應：`daily` → 華語單曲日榜、`weekly` → 華語單曲週榜、`yearly` → 華語年度新歌累積榜
 
 ## 注意事項
 

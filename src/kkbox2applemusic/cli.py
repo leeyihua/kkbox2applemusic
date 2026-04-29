@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -15,7 +14,7 @@ from rich.table import Table
 
 from .exporter import export_csv, export_txt, export_unmatched_log
 from .matcher import MatchResult, match_all
-from .parser import parse_kbl
+from .parser import Song, parse_kbl
 
 load_dotenv()
 
@@ -41,6 +40,110 @@ def _get_dev_token(
         except Exception as e:
             console.print(f"[yellow]警告：無法產生 Apple Music Token（{e}），改用 iTunes Search API[/yellow]")
     return None
+
+
+def _match_songs(
+    songs: list[Song],
+    country: str,
+    token: Optional[str],
+) -> list[MatchResult]:
+    """執行歌曲比對並顯示進度條。"""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("比對中...", total=len(songs))
+
+        def on_progress(result: MatchResult) -> None:
+            status = "[green]✓[/green]" if result.matched else "[red]✗[/red]"
+            progress.update(task, advance=1, description=f"{status} {result.song.name[:30]}")
+
+        return asyncio.run(
+            match_all(songs, country=country, on_progress=on_progress, dev_token=token)
+        )
+
+
+def _export_and_push(
+    results: list[MatchResult],
+    playlist_name: str,
+    output_dir: Path,
+    token: Optional[str],
+    user_token: Optional[str],
+    push: bool,
+) -> None:
+    """輸出比對結果並（若指定）推送至 Apple Music。"""
+    matched = sum(1 for r in results if r.matched)
+    unmatched = len(results) - matched
+
+    table = Table(title="比對結果摘要")
+    table.add_column("項目", style="bold")
+    table.add_column("數量", justify="right")
+    table.add_row("總歌曲數", str(len(results)))
+    table.add_row("成功比對", f"[green]{matched}[/green]")
+    table.add_row("未找到", f"[red]{unmatched}[/red]")
+    table.add_row("成功率", f"{matched / len(results) * 100:.1f}%")
+    console.print(table)
+
+    safe_name = playlist_name.replace("/", "-").replace("\\", "-")
+    txt_path = output_dir / f"{safe_name}.txt"
+    csv_path = output_dir / f"{safe_name}.csv"
+    log_path = output_dir / "unmatched.log"
+
+    txt_count = export_txt(results, txt_path)
+    console.print(f"[dim]TXT（{txt_count} 首）：[/dim]{txt_path}")
+
+    export_csv(results, csv_path)
+    console.print(f"[dim]CSV 參考：[/dim]{csv_path}")
+
+    if unmatched > 0:
+        export_unmatched_log(results, log_path)
+        console.print(f"[yellow]未匹配 log：[/yellow]{log_path}")
+
+    if push:
+        if not token:
+            console.print(
+                "[red]錯誤：--push 需要 Apple Developer 憑證（--key-file / --key-id / --team-id）[/red]"
+            )
+            raise typer.Exit(1)
+
+        if not user_token:
+            console.print("\n[bold]需要授權 Apple Music 帳號[/bold]")
+            console.print("[dim]即將開啟瀏覽器，請以你的 Apple ID 登入後回到終端機[/dim]")
+            try:
+                from .auth import get_music_user_token
+                user_token = get_music_user_token(token)
+                console.print("[green]✓ 授權成功[/green]")
+            except TimeoutError as e:
+                console.print(f"[red]授權逾時：{e}[/red]")
+                raise typer.Exit(1)
+
+        console.print("\n[bold]推送播放清單至 Apple Music…[/bold]")
+        from .pusher import push_to_apple_music
+
+        def _on_push_progress(ok: int, _fail: int) -> None:
+            pass
+
+        try:
+            _playlist_id, push_ok, push_fail = asyncio.run(
+                push_to_apple_music(
+                    results, playlist_name, token, user_token,
+                    on_progress=_on_push_progress,
+                )
+            )
+            console.print(
+                f"[green bold]✓ 已成功推送 {push_ok} 首至 Apple Music 播放清單「{playlist_name}」[/green bold]"
+            )
+            if push_fail:
+                console.print(
+                    f"[yellow]  {push_fail} 首失敗（可能不在台灣 Apple Music 目錄）[/yellow]"
+                )
+        except Exception as e:
+            console.print(f"[red]推送失敗：{e}[/red]")
+            raise typer.Exit(1)
+    else:
+        console.print("[dim]加上 --push 旗標可直接推送至 Apple Music 帳號（需 Apple Developer 憑證）[/dim]")
 
 
 @app.command()
@@ -96,104 +199,84 @@ def convert(
     playlist_name, songs = parse_kbl(kbl_file)
     console.print(f"播放清單：[cyan]{playlist_name}[/cyan]，共 [bold]{len(songs)}[/bold] 首歌曲")
 
-    results: list[MatchResult] = []
+    results = _match_songs(songs, country, token)
+    _export_and_push(results, playlist_name, output_dir, token, user_token, push)
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("比對中...", total=len(songs))
 
-        def on_progress(result: MatchResult) -> None:
-            status = "[green]✓[/green]" if result.matched else "[red]✗[/red]"
-            progress.update(
-                task,
-                advance=1,
-                description=f"{status} {result.song.name[:30]}",
-            )
+_CHART_SHORTCUTS: dict[str, str] = {
+    "yearly":  "https://kma.kkbox.com/charts/yearly/newrelease?lang=tc&terr=tw",
+    "weekly":  "https://kma.kkbox.com/charts/weekly/song?lang=tc&terr=tw",
+    "daily":   "https://kma.kkbox.com/charts/daily/song?lang=tc&terr=tw",
+}
 
-        results = asyncio.run(
-            match_all(songs, country=country, on_progress=on_progress, dev_token=token)
-        )
 
-    matched = sum(1 for r in results if r.matched)
-    unmatched = len(results) - matched
+@app.command()
+def chart(
+    chart_url: str = typer.Argument(
+        "yearly",
+        help="排行榜類型（yearly/weekly/daily）或完整 KKBOX 排行榜 URL",
+    ),
+    output_dir: Path = typer.Option(Path("output"), "--output-dir", "-o", help="輸出目錄"),
+    country: str = typer.Option("tw", "--country", "-c", help="iTunes Store 地區代碼"),
+    key_file: Optional[Path] = typer.Option(
+        None, "--key-file", "-k",
+        help="Apple Developer .p8 私鑰檔路徑",
+        envvar="APPLE_KEY_FILE",
+    ),
+    key_id: Optional[str] = typer.Option(
+        None, "--key-id",
+        help="Apple Developer Key ID（10 碼）",
+        envvar="APPLE_KEY_ID",
+    ),
+    team_id: Optional[str] = typer.Option(
+        None, "--team-id",
+        help="Apple Developer Team ID（10 碼）",
+        envvar="APPLE_TEAM_ID",
+    ),
+    dev_token: Optional[str] = typer.Option(
+        None, "--dev-token",
+        help="直接傳入 Apple Music 開發者 JWT Token",
+        envvar="APPLE_DEV_TOKEN",
+    ),
+    user_token: Optional[str] = typer.Option(
+        None, "--user-token",
+        help="Apple Music User Token",
+        envvar="APPLE_USER_TOKEN",
+    ),
+    push: bool = typer.Option(
+        False, "--push",
+        help="比對完成後直接推送至 Apple Music 帳號（需 Apple Developer 憑證）",
+    ),
+) -> None:
+    """從 KKBOX 排行榜抓取歌曲，比對並匯入 Apple Music。
 
-    # 輸出摘要
-    table = Table(title="比對結果摘要")
-    table.add_column("項目", style="bold")
-    table.add_column("數量", justify="right")
-    table.add_row("總歌曲數", str(len(results)))
-    table.add_row("成功比對", f"[green]{matched}[/green]")
-    table.add_row("未找到", f"[red]{unmatched}[/red]")
-    table.add_row("成功率", f"{matched / len(results) * 100:.1f}%")
-    console.print(table)
+    可用簡短關鍵字或完整 URL：
 
-    # 輸出檔案
-    safe_name = playlist_name.replace("/", "-").replace("\\", "-")
-    txt_path = output_dir / f"{safe_name}.txt"
-    csv_path = output_dir / f"{safe_name}.csv"
-    log_path = output_dir / "unmatched.log"
+        kkbox2applemusic chart            # 年榜（預設）
+        kkbox2applemusic chart daily      # 日榜
+        kkbox2applemusic chart weekly     # 週榜
+        kkbox2applemusic chart "https://kma.kkbox.com/charts/..."
+    """
+    from .scraper import fetch_chart_songs
 
-    txt_count = export_txt(results, txt_path)
-    console.print(f"[dim]TXT（{txt_count} 首）：[/dim]{txt_path}")
+    resolved_url = _CHART_SHORTCUTS.get(chart_url, chart_url)
 
-    export_csv(results, csv_path)
-    console.print(f"[dim]CSV 參考：[/dim]{csv_path}")
+    token = _get_dev_token(key_file, key_id, team_id, dev_token)
+    if not token:
+        console.print("[dim]使用 iTunes Search API（免費，無需金鑰）[/dim]")
 
-    if unmatched > 0:
-        export_unmatched_log(results, log_path)
-        console.print(f"[yellow]未匹配 log：[/yellow]{log_path}")
+    console.print(f"[bold]抓取排行榜[/bold] {resolved_url} ...")
+    try:
+        playlist_name, songs = asyncio.run(fetch_chart_songs(resolved_url))
+    except Exception as e:
+        console.print(f"[red]錯誤：無法取得排行榜資料（{e}）[/red]")
+        raise typer.Exit(1)
 
-    # ── 推送至 Apple Music 帳號 ──────────────────────────────────────────────
-    if push:
-        if not token:
-            console.print(
-                "[red]錯誤：--push 需要 Apple Developer 憑證（--key-file / --key-id / --team-id）[/red]"
-            )
-            raise typer.Exit(1)
+    console.print(f"排行榜：[cyan]{playlist_name}[/cyan]，共 [bold]{len(songs)}[/bold] 首歌曲")
 
-        if not user_token:
-            console.print("\n[bold]需要授權 Apple Music 帳號[/bold]")
-            console.print("[dim]即將開啟瀏覽器，請以你的 Apple ID 登入後回到終端機[/dim]")
-            try:
-                from .auth import get_music_user_token
-                user_token = get_music_user_token(token)
-                console.print("[green]✓ 授權成功[/green]")
-            except TimeoutError as e:
-                console.print(f"[red]授權逾時：{e}[/red]")
-                raise typer.Exit(1)
+    if not songs:
+        console.print("[yellow]警告：未取得任何歌曲，請確認 URL 是否正確[/yellow]")
+        raise typer.Exit(1)
 
-        console.print("\n[bold]推送播放清單至 Apple Music…[/bold]")
-        from .pusher import push_to_apple_music
-
-        pushed_count = 0
-
-        def _on_push_progress(ok: int, _fail: int) -> None:
-            nonlocal pushed_count
-            pushed_count = ok
-
-        try:
-            _playlist_id, push_ok, push_fail = asyncio.run(
-                push_to_apple_music(
-                    results, playlist_name, token, user_token,
-                    on_progress=_on_push_progress,
-                )
-            )
-            console.print(
-                f"[green bold]✓ 已成功推送 {push_ok} 首至 Apple Music 播放清單「{playlist_name}」[/green bold]"
-            )
-            if push_fail:
-                console.print(
-                    f"[yellow]  {push_fail} 首失敗（可能不在台灣 Apple Music 目錄）[/yellow]"
-                )
-        except Exception as e:
-            console.print(f"[red]推送失敗：{e}[/red]")
-            raise typer.Exit(1)
-    else:
-        console.print(
-            "\n[bold]匯入建議：[/bold]雙擊 [cyan].applescript[/cyan] 檔案 → Script Editor 開啟 → 按「執行」（Cmd+R）"
-        )
-        console.print("[dim]或加上 --push 旗標直接推送至 Apple Music 帳號（需 Apple Developer 憑證）[/dim]")
+    results = _match_songs(songs, country, token)
+    _export_and_push(results, playlist_name, output_dir, token, user_token, push)
