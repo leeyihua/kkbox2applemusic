@@ -88,7 +88,8 @@ src/kkbox2applemusic/
 
 - API endpoint：`https://kma.kkbox.com/charts/api/v1/{period}`，不需要認證
 - 日榜需帶 `date`（昨天）參數，當日資料尚未就緒
-- 各類型榜單上限：daily=50、weekly=100、yearly=100
+- 各類型榜單上限：daily=50、weekly=50、yearly=100
+- weekly 不帶 date 參數，API 自動回傳最新一週（帶 date 反而可能無資料）
 - 短關鍵字對應：`daily` → 華語單曲日榜、`weekly` → 華語單曲週榜、`yearly` → 華語年度新歌累積榜
 
 ## 同名播放清單衝突處理（--conflict）

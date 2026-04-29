@@ -15,8 +15,8 @@ _TITLE_RE = re.compile(r"<title>([^<]+)</title>")
 # KKBOX 排行榜 API 基礎 URL，不需要認證
 _CHART_API_BASE = "https://kma.kkbox.com/charts/api/v1"
 
-# 各類型排行榜的最大筆數（來自 KKBOX 前端 JS）
-_PERIOD_LIMITS = {"daily": 50, "weekly": 100, "yearly": 100}
+# 各類型排行榜的最大筆數（來自 KKBOX 前端 JS：daily/weekly 皆為 50，yearly 為 100）
+_PERIOD_LIMITS = {"daily": 50, "weekly": 50, "yearly": 100}
 
 
 async def fetch_chart_songs(url: str) -> tuple[str, list[Song]]:
@@ -45,7 +45,9 @@ async def fetch_chart_songs(url: str) -> tuple[str, list[Song]]:
         terr = qs.get("terr", ["tw"])[0]
         limit = _PERIOD_LIMITS.get(period, 100)
 
-        # 組合 API 參數；daily 需要 date（昨天，當日資料未就緒）
+        # 組合 API 參數
+        # daily 需要明確帶 date（昨天），當日資料尚未就緒
+        # weekly 不帶 date，API 會自動回傳最新一週
         params: dict[str, str | int] = {
             "lang": lang,
             "terr": terr,
