@@ -1,10 +1,28 @@
+# 虛擬環境與建置
 .venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
-.pytest_cache/
 dist/
-output/
-*.log
+
+# 測試與快取
+.pytest_cache/
+
+# 機密憑證
 .env
 *.p8
+
+# 輸入 / 輸出資料（使用者個人資料，不納入版控）
+input/
+output/
+*.kbl
+
+# 日誌
+*.log
+
+# macOS 系統檔
+.DS_Store
+**/.DS_Store
+
+# Claude Code 本地設定
+.claude/
