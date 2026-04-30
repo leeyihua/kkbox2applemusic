@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  KKBOX 華語單曲週榜 → Apple Music 自動排程
+  每週一 09:00 執行
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kkbox2applemusic.weekly</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/uv</string>
+        <string>run</string>
+        <string>--project</string>
+        <string>/Users/donald/ai/kkbox2applemusic</string>
+        <string>kkbox2applemusic</string>
+        <string>chart</string>
+        <string>weekly</string>
+        <string>--push</string>
+        <string>--conflict</string>
+        <string>replace</string>
+    </array>
+
+    <!-- 每週一 09:00 執行（Weekday 1 = 週一） -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/donald</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/donald/ai/kkbox2applemusic</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/donald/Library/Logs/kkbox2applemusic.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/donald/Library/Logs/kkbox2applemusic.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

@@ -78,11 +78,12 @@ _AUTH_HTML = """\
       try {
         await MusicKit.configure({
           developerToken: '__DEVELOPER_TOKEN__',
-          app: { name: 'kkbox2applemusic', build: '1.0.0' }
+          app: { name: 'kkbox2applemusic', build: '1.0.0' },
+          permissions: 'music.library'
         });
         const music = MusicKit.getInstance();
         msg.textContent = '請在彈出視窗中以您的 Apple ID 登入…';
-        await music.authorize();
+        await music.authorize({ forceAuthorization: true });
         const token = music.musicUserToken;
         if (!token) throw new Error('取得 Music User Token 失敗，請確認已訂閱 Apple Music');
         msg.textContent = '傳送授權資訊中…';

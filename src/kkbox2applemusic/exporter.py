@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .matcher import MatchResult
+from .parser import Song
 
 CSV_FIELDS = [
     "kkbox_name",
@@ -205,6 +206,32 @@ def export_applescript(
 
     output_path.write_text("\n".join(lines), encoding="utf-8")
     return len(matched)
+
+
+def load_from_csv(csv_path: Path) -> list[MatchResult]:
+    """從 CSV 還原 MatchResult 清單（用於 cache 命中時跳過 match 步驟）。"""
+    results: list[MatchResult] = []
+    with csv_path.open(encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            song = Song(
+                name=row["kkbox_name"],
+                artist=row["kkbox_artist"],
+                album=row["kkbox_album"],
+                kkbox_id=row["kkbox_id"],
+                track_id="",
+            )
+            track_id_raw = row.get("apple_track_id", "")
+            results.append(MatchResult(
+                song=song,
+                matched=row["matched"] == "Y",
+                apple_track_id=int(track_id_raw) if track_id_raw else None,
+                apple_track_name=row.get("apple_track_name") or None,
+                apple_artist=row.get("apple_artist") or None,
+                apple_album=row.get("apple_album") or None,
+                apple_url=row.get("apple_url") or None,
+                confidence=float(row.get("confidence", 0)),
+            ))
+    return results
 
 
 def export_unmatched_log(results: list[MatchResult], log_path: Path) -> None:

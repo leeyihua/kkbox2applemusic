@@ -156,8 +156,15 @@ async def push_to_apple_music(
             )
 
         if conflict == "replace" and playlist_id:
-            await _delete_playlist(playlist_id, dev_token, user_token, client)
-            playlist_id = None  # 刪除後重建
+            try:
+                await _delete_playlist(playlist_id, dev_token, user_token, client)
+                playlist_id = None  # 刪除後重建
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    # MusicKit JS token 權限不足（DELETE 未授權），改為新建
+                    playlist_id = None
+                else:
+                    raise
 
         if playlist_id is None:
             playlist_id = await _create_playlist(

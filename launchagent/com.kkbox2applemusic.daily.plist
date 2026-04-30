@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  KKBOX 華語單曲日榜 → Apple Music 自動排程
+  每天 08:30 執行，需先完成下列步驟：
+    1. 在 .env 中填入所有 APPLE_* 環境變數（含 APPLE_USER_TOKEN）
+    2. 複製此檔案至 ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.kkbox2applemusic.daily.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kkbox2applemusic.daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/uv</string>
+        <string>run</string>
+        <string>--project</string>
+        <!-- 修改為你的實際專案路徑 -->
+        <string>/Users/donald/ai/kkbox2applemusic</string>
+        <string>kkbox2applemusic</string>
+        <string>chart</string>
+        <string>daily</string>
+        <string>--push</string>
+        <string>--conflict</string>
+        <string>replace</string>
+    </array>
+
+    <!-- 每天 08:30 執行 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <!-- 讀取 .env 中的 APPLE_* 環境變數 -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/donald</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <!-- 修改為你的實際專案路徑 -->
+    <string>/Users/donald/ai/kkbox2applemusic</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/donald/Library/Logs/kkbox2applemusic.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/donald/Library/Logs/kkbox2applemusic.log</string>
+
+    <!-- 若因睡眠等原因錯過，喚醒後補執行 -->
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
