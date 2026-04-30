@@ -1,12 +1,12 @@
 [project]
 name = "kkbox2applemusic"
-version = "0.2.0"
+version = "0.2.1"
 description = "將 KKBOX 播放清單轉換為 Apple Music 格式"
 readme = "README.md"
 authors = [
     { name = "Donald Lee", email = "donald.lee@macrowell.com.tw" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "cryptography>=46.0.7",
     "httpx>=0.28.1",

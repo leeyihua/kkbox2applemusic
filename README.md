@@ -4,10 +4,24 @@
 
 ## 安裝
 
-需要 [uv](https://docs.astral.sh/uv/)。
+只需安裝 [uv](https://docs.astral.sh/uv/)，Python 與所有套件相依均由 uv 自動管理，無需手動安裝。
+
+### macOS / Linux
 
 ```bash
-git clone <repo>
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Windows（PowerShell）
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+### 下載並初始化專案
+
+```bash
+git clone https://github.com/leeyihua/kkbox2applemusic.git
 cd kkbox2applemusic
 uv sync
 ```
@@ -88,7 +102,9 @@ echo 'APPLE_USER_TOKEN=eyJ...' >> .env
 
 之後執行 `chart --push` 將直接使用此 token，不再跳出瀏覽器視窗。
 
-### 第二步：設定 macOS LaunchAgent
+### 第二步：設定定時排程
+
+#### macOS — LaunchAgent
 
 `launchagent/` 目錄提供兩份範本：
 
@@ -107,6 +123,24 @@ tail -f ~/Library/Logs/kkbox2applemusic.log
 ```
 
 plist 預設使用 `--conflict replace`（每次更新同名清單），可依需求改為 `append` 或 `new`。
+
+#### Windows — 工作排程器
+
+1. 開啟「工作排程器」（搜尋 `taskschd.msc`）
+2. 建立基本工作，動作選「啟動程式」
+3. 程式填入 `uv`，引數填入（以日榜為例）：
+   ```
+   run --project C:\path\to\kkbox2applemusic kkbox2applemusic chart daily --push --conflict replace
+   ```
+4. 設定觸發時間（每天 08:30 或每週一 09:00）
+
+#### Linux — cron
+
+```bash
+crontab -e
+# 每天 08:30 執行日榜
+30 8 * * * cd /path/to/kkbox2applemusic && uv run kkbox2applemusic chart daily --push --conflict replace
+```
 
 ---
 
