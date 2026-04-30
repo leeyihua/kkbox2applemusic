@@ -1,7 +1,8 @@
-"""從 KKBOX 排行榜網頁抓取歌曲清單。"""
+"""從 KKBOX 排行榜或播放清單頁面抓取歌曲清單。"""
 
 from __future__ import annotations
 
+import html as _html_module
 import re
 from datetime import date, timedelta
 from urllib.parse import parse_qs, urlparse
@@ -11,6 +12,9 @@ import httpx
 from .parser import Song
 
 _TITLE_RE = re.compile(r"<title>([^<]+)</title>")
+
+# 辨識 KKBOX playlist 頁面 URL（www.kkbox.com/.../playlist/...）
+_PLAYLIST_URL_RE = re.compile(r"kkbox\.com/[^/]+/[^/]+/playlist/")
 
 # KKBOX 排行榜 API 基礎 URL，不需要認證
 _CHART_API_BASE = "https://kma.kkbox.com/charts/api/v1"
@@ -88,3 +92,61 @@ async def fetch_chart_songs(url: str) -> tuple[str, list[Song]]:
             )
 
         return playlist_name, songs
+
+
+# --- KKBOX playlist HTML 解析 ---
+
+# 每首歌對應一個 <li data-duration="..."> ... </li>
+_LI_RE = re.compile(r"<li[^>]*data-duration[^>]*>([\s\S]*?)</li>")
+# 歌名與 KKBOX song ID（從 href="/song/{id}" 取出）
+_SONG_RE = re.compile(
+    r'<div class="song"[^>]*>[\s\S]*?<a[^>]+href="[^"]*/song/([^"]+)"[^>]*>([^<]+)</a>'
+)
+# 歌手：artist-album div 內第一個 <a>
+_ARTIST_RE = re.compile(r'<div class="artist-album">[\s\S]*?<a[^>]*>([^<]+)</a>')
+# 專輯：<span class="album"> 內的 <a title="...">
+_ALBUM_RE = re.compile(r'<span class="album">-\s*<a[^>]+title="([^"]+)"')
+
+
+def _parse_playlist_html(html: str) -> list[Song]:
+    """從 playlist HTML 解析所有歌曲。"""
+    songs: list[Song] = []
+    for li_m in _LI_RE.finditer(html):
+        li = li_m.group(1)
+        song_m = _SONG_RE.search(li)
+        if not song_m:
+            continue
+        kkbox_id = song_m.group(1)
+        name = _html_module.unescape(song_m.group(2))
+        artist_m = _ARTIST_RE.search(li)
+        artist = _html_module.unescape(artist_m.group(1)) if artist_m else ""
+        album_m = _ALBUM_RE.search(li)
+        album = _html_module.unescape(album_m.group(1)) if album_m else ""
+        songs.append(Song(name=name, artist=artist, album=album, kkbox_id=kkbox_id, track_id=""))
+    return songs
+
+
+async def fetch_playlist_songs(url: str) -> tuple[str, list[Song]]:
+    """從 KKBOX playlist 頁面抓取歌曲清單，回傳 (清單名稱, 歌曲清單)。
+
+    直接解析頁面 HTML，不依賴額外 API 認證。
+    """
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+        "Referer": "https://www.kkbox.com/",
+    }
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        html = resp.text
+
+    title_m = _TITLE_RE.search(html)
+    playlist_name = title_m.group(1).split(" - ")[0].strip() if title_m else "KKBOX 播放清單"
+
+    songs = _parse_playlist_html(html)
+    return playlist_name, songs

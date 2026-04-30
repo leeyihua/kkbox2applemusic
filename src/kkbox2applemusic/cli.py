@@ -298,18 +298,46 @@ def convert(
     _export_and_push(results, playlist_name, output_dir, token, user_token, push, conflict, date_suffix)
 
 
-_CHART_SHORTCUTS: dict[str, str] = {
-    "yearly":  "https://kma.kkbox.com/charts/yearly/newrelease?lang=tc&terr=tw",
-    "weekly":  "https://kma.kkbox.com/charts/weekly/song?lang=tc&terr=tw",
-    "daily":   "https://kma.kkbox.com/charts/daily/song?lang=tc&terr=tw",
-}
+# 預定義來源清單（key, 顯示名稱, URL），順序即選單順序
+_SOURCES: list[tuple[str, str, str]] = [
+    ("daily",      "華語單曲日榜",       "https://kma.kkbox.com/charts/daily/song?cate=297&lang=tc&terr=tw"),
+    ("daily-new",  "華語新歌日榜",       "https://kma.kkbox.com/charts/daily/newrelease?terr=tw&lang=tc"),
+    ("weekly",     "華語單曲週榜",       "https://kma.kkbox.com/charts/weekly/song?terr=tw&lang=tc"),
+    ("weekly-new", "華語新歌週榜",       "https://kma.kkbox.com/charts/weekly/newrelease?terr=tw&lang=tc"),
+    ("yearly",     "華語年度單曲累積榜", "https://kma.kkbox.com/charts/yearly/newrelease?lang=tc&terr=tw"),
+    ("qiankui",    "錢櫃國語點播榜",     "https://www.kkbox.com/tw/tc/playlist/__u6jEV61Qgdt4Tci1"),
+]
+
+_SOURCE_SHORTCUTS: dict[str, str] = {key: url for key, _, url in _SOURCES}
+
+
+def _show_source_menu() -> str:
+    """顯示互動選單，回傳使用者選擇的 URL。"""
+    console.print("\n[bold]請選擇來源：[/bold]")
+    for i, (key, name, _) in enumerate(_SOURCES, 1):
+        console.print(f"  [cyan]{i}[/cyan]. {name}  [dim]({key})[/dim]")
+    raw = typer.prompt("\n輸入編號")
+    try:
+        choice = int(raw)
+    except ValueError:
+        choice = 0
+    if not 1 <= choice <= len(_SOURCES):
+        console.print("[red]無效的選項[/red]")
+        raise typer.Exit(1)
+    _, name, url = _SOURCES[choice - 1]
+    console.print(f"已選擇：[cyan]{name}[/cyan]\n")
+    return url
 
 
 @app.command()
 def chart(
-    chart_url: str = typer.Argument(
-        "yearly",
-        help="排行榜類型（yearly/weekly/daily）或完整 KKBOX 排行榜 URL",
+    source: Optional[str] = typer.Argument(
+        None,
+        help=(
+            "來源代碼或完整 URL。"
+            "可用代碼：daily / daily-new / weekly / weekly-new / yearly / qiankui。"
+            "省略時顯示互動選單。"
+        ),
     ),
     output_dir: Path = typer.Option(Path("output"), "--output-dir", "-o", help="輸出目錄"),
     country: str = typer.Option("tw", "--country", "-c", help="iTunes Store 地區代碼"),
@@ -351,31 +379,40 @@ def chart(
         help="在播放清單名稱後加上今天日期，例如「清單名稱-20260430」",
     ),
 ) -> None:
-    """從 KKBOX 排行榜抓取歌曲，比對並匯入 Apple Music。
+    """從 KKBOX 抓取歌曲，比對並匯入 Apple Music。
 
-    可用簡短關鍵字或完整 URL：
+    省略來源代碼時顯示互動選單；加代碼或 URL 可直接執行（適合自動化）：
 
-        kkbox2applemusic chart            # 年榜（預設）
-        kkbox2applemusic chart daily      # 日榜
-        kkbox2applemusic chart weekly     # 週榜
-        kkbox2applemusic chart "https://kma.kkbox.com/charts/..."
+        kkbox2applemusic chart                  # 顯示選單
+        kkbox2applemusic chart daily            # 華語單曲日榜
+        kkbox2applemusic chart qiankui          # 錢櫃國語點播榜
+        kkbox2applemusic chart "https://..."    # 完整 URL
     """
-    from .scraper import fetch_chart_songs
+    from .scraper import _PLAYLIST_URL_RE, fetch_chart_songs, fetch_playlist_songs
 
-    resolved_url = _CHART_SHORTCUTS.get(chart_url, chart_url)
+    if source is None:
+        resolved_url = _show_source_menu()
+    else:
+        resolved_url = _SOURCE_SHORTCUTS.get(source, source)
+
+    is_playlist = bool(_PLAYLIST_URL_RE.search(resolved_url))
 
     token = _get_dev_token(key_file, key_id, team_id, dev_token)
     if not token:
         console.print("[dim]使用 iTunes Search API（免費，無需金鑰）[/dim]")
 
-    console.print(f"[bold]抓取排行榜[/bold] {resolved_url} ...")
+    source_label = "播放清單" if is_playlist else "排行榜"
+    console.print(f"[bold]抓取{source_label}[/bold] {resolved_url} ...")
     try:
-        playlist_name, songs = asyncio.run(fetch_chart_songs(resolved_url))
+        if is_playlist:
+            playlist_name, songs = asyncio.run(fetch_playlist_songs(resolved_url))
+        else:
+            playlist_name, songs = asyncio.run(fetch_chart_songs(resolved_url))
     except Exception as e:
-        console.print(f"[red]錯誤：無法取得排行榜資料（{e}）[/red]")
+        console.print(f"[red]錯誤：無法取得{source_label}資料（{e}）[/red]")
         raise typer.Exit(1)
 
-    console.print(f"排行榜：[cyan]{playlist_name}[/cyan]，共 [bold]{len(songs)}[/bold] 首歌曲")
+    console.print(f"{source_label}：[cyan]{playlist_name}[/cyan]，共 [bold]{len(songs)}[/bold] 首歌曲")
 
     if not songs:
         console.print("[yellow]警告：未取得任何歌曲，請確認 URL 是否正確[/yellow]")
