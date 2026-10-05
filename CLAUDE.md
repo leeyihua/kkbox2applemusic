@@ -98,10 +98,13 @@ src/kkbox2applemusic/
 
 - `match_all()` 是 async，每首歌之間有 0.5 秒 rate limit 延遲
 - 比對信心分數 < 0.42（`_MIN_CONFIDENCE`）視為未匹配；分數由歌名（65%）+ 歌手名（35%）相似度加權
-- 結果含 Remix / Instrumental / Karaoke 等非原版關鍵字、但原歌名沒有時，分數 × 0.7
-- 搜尋策略依序為：清理後歌名 + 各歌手變體 → 原始歌名 + 各歌手變體 → 純歌名；Various Artists／群星另加「歌名 + 專輯關鍵字」。分數 ≥ 0.8 即提前結束
+- 結果含非原版關鍵字（`_NON_ORIGINAL_RE`：Remix、Instrumental、Karaoke、韓文版、粵語版、伴奏等）、但原歌名沒有時，分數 × 0.7
+- 搜尋策略依序為：清理後歌名 + 各歌手變體 → 主標 + 各歌手變體（「歌名 - 副標」格式，`-` 前後需有空白）→ 原始歌名 + 各歌手變體 → 純歌名；Various Artists／群星另加「歌名 + 專輯關鍵字」。分數 ≥ 0.8 即提前結束
 - `_strip_song_name()` 移除影視／版本標注（主題曲、片尾曲、Live、Version 等），保留 feat. 與數字
 - `_artist_variants()` 拆出「中文 (English)」、中英混寫、多位藝人等變體
+- 藝人變體出現在結果專輯名稱中時，藝人分數至少 0.8（KKBOX 有時以節目名稱當演出者，如「天賜的聲音」）
+- 藝人不符懲罰：候選僅由純歌名查詢找到（`artist_confirmed=False`）且藝人分數 < 0.25 時，總分 × 0.6。由「歌名 + 藝人」查詢找到的候選不扣分，因為搜尋引擎認得別名（如 aMEI → 張惠妹）
+- 已知限制：KKBOX 演出者不在 Apple Music 目錄、但有同名翻唱且歌手名部分字元相同時（如 RG-老帅 → 老闆），仍可能誤配。刻意不針對個案調整規則，推送前請檢查低分（< 0.6）的 CSV 列
 - 有傳入 `dev_token` 時使用 `api.music.apple.com`，否則使用 `itunes.apple.com/search`；Apple Music API 回傳的是 catalog 標準名稱，可大幅提高 Music.app 的識別率
 
 ## KKBOX 來源（scraper.py / cli.py）
