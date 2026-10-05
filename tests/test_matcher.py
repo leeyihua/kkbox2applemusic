@@ -291,3 +291,96 @@ async def test_match_song_http_error():
         result = await match_song(SAMPLE_SONG, client)
 
     assert result.matched is False
+
+
+# ── 非原版、副標、藝人不符 ────────────────────────────────────────────────
+
+def _cand(track_id, name, artist, album=""):
+    return {"trackId": track_id, "trackName": name, "artistName": artist,
+            "collectionName": album, "trackViewUrl": ""}
+
+
+@pytest.mark.parametrize("result_name", [
+    "甲乙丙丁Strangers (粵語版)",
+    "甲乙丙丁Strangers (伴奏)",
+    "甲乙丙丁Strangers (粵語版伴奏)",
+])
+def test_score_penalizes_cantonese_and_instrumental(result_name):
+    original = _score_candidate("甲乙丙丁Strangers", "李佳薇", _cand(1, "甲乙丙丁Strangers", "李佳薇"))
+    variant = _score_candidate("甲乙丙丁Strangers", "李佳薇", _cand(2, result_name, "李佳薇"))
+    assert variant < original
+
+
+def test_score_artist_in_result_album_counts_as_match():
+    """KKBOX 以節目名稱當演出者時，節目名稱出現在專輯名稱中應視為相符。"""
+    live = _cand(1, "訣愛·盡 (現場)", "盛宇 & Faye 詹雯婷", "中國說唱巔峰對決2023 第六期加更(Live)")
+    other = _cand(2, "訣愛·盡", "錦JIN", "訣愛·盡 - Single")
+    artist = "中國說唱巔峰對決2023"
+    assert _score_candidate("訣愛·盡", artist, live) > _score_candidate("訣愛·盡", artist, other)
+
+
+def test_score_artist_mismatch_penalized_only_when_unconfirmed():
+    cand = _cand(1, "我不该动情", "Chyen Tao")
+    confirmed = _score_candidate("我不该动情", "RG-老帅", cand, artist_confirmed=True)
+    unconfirmed = _score_candidate("我不该动情", "RG-老帅", cand, artist_confirmed=False)
+    assert unconfirmed < 0.42 <= confirmed
+
+
+def _term_router(table: dict[str, list[dict]]):
+    """依查詢字串回傳對應的候選；未列出的查詢回傳空結果。"""
+    def _side_effect(request):
+        term = request.url.params.get("term", "")
+        results = table.get(term, [])
+        return httpx.Response(200, json={"resultCount": len(results), "results": results})
+    return _side_effect
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_match_song_subtitle_head_finds_original():
+    """「歌名 - 副標」應改用主標搜尋，選中原版而非粵語版。"""
+    song = Song(name="甲乙丙丁 - 你我怎麼兩清", artist="李佳薇 (Jess Lee)",
+                album="甲乙丙丁", kkbox_id="x", track_id="y")
+    original = _cand(1, "甲乙丙丁Strangers", "李佳薇")
+    cantonese = _cand(2, "甲乙丙丁Strangers (粵語版)", "李佳薇")
+    respx.get(ITUNES_SEARCH_URL).mock(side_effect=_term_router({
+        "甲乙丙丁 - 你我怎麼兩清 李佳薇 (Jess Lee)": [cantonese],
+        "甲乙丙丁 李佳薇 (Jess Lee)": [original, cantonese],
+    }))
+
+    async with httpx.AsyncClient() as client:
+        result = await match_song(song, client)
+
+    assert result.matched is True
+    assert result.apple_track_id == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_match_song_unrelated_artist_from_name_only_query_is_unmatched():
+    """純歌名查詢找到的同名歌曲若藝人不符，應判定為未匹配。"""
+    song = Song(name="我不该动情", artist="RG-老帅", album="", kkbox_id="x", track_id="y")
+    respx.get(ITUNES_SEARCH_URL).mock(side_effect=_term_router({
+        "我不该动情": [_cand(1, "我不该动情", "Chyen Tao")],
+    }))
+
+    async with httpx.AsyncClient() as client:
+        result = await match_song(song, client)
+
+    assert result.matched is False
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_match_song_artist_alias_found_by_artist_query_is_kept():
+    """含藝人的查詢找到的結果（如 aMEI → 張惠妹）即使藝人字串不像也不扣分。"""
+    song = Song(name="我的存在就是愛你", artist="aMEI", album="", kkbox_id="x", track_id="y")
+    respx.get(ITUNES_SEARCH_URL).mock(side_effect=_term_router({
+        "我的存在就是愛你 aMEI": [_cand(1, "我的存在就是愛你", "張惠妹")],
+    }))
+
+    async with httpx.AsyncClient() as client:
+        result = await match_song(song, client)
+
+    assert result.matched is True
+    assert result.apple_track_id == 1

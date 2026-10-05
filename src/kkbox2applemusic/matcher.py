@@ -137,10 +137,19 @@ def _name_score(search_name: str, result_name: str) -> float:
 
 
 # 非原始版本的關鍵字：當原始歌名不含這些詞，但比對結果含有時，降低分數
+# 中文詞不加 \b：前後常緊接其他中文字（如「粵語版伴奏」），\b 會判定失敗
 _NON_ORIGINAL_RE = re.compile(
-    r"\b(韓文版|Japanese Ver|English Ver|Remix|Instrumental|Karaoke|Acoustic)\b",
+    r"\b(?:Japanese Ver|English Ver|Remix|Instrumental|Karaoke|Acoustic)\b"
+    r"|韓文版|粵語版|粤语版|伴奏",
     re.IGNORECASE,
 )
+
+# 「歌名 - 副標」的分隔符號（前後需有空白，避免誤拆「RG-老帅」這類名稱）
+_SUBTITLE_SEP_RE = re.compile(r"\s+[-–—]\s+")
+
+# 藝人相似度低於此值、且候選歌曲不是由含藝人的查詢找到時，視為藝人不符
+_ARTIST_MISMATCH_THRESHOLD = 0.25
+_ARTIST_MISMATCH_PENALTY = 0.6
 
 # 專輯名稱中的 OST / 原聲帶等詞彙，提取關鍵字時移除
 _ALBUM_NOISE_RE = re.compile(r"原聲帶|原声带|影視原聲|影视原声|OST|Soundtrack")
@@ -176,17 +185,23 @@ def _score_candidate(
     original_artist: str,
     candidate: dict,
     original_album: str = "",
+    artist_confirmed: bool = True,
 ) -> float:
     """根據歌名、藝人（含所有變體）計算最佳比對分數。
 
     對 Various Artists 歌曲，改用專輯關鍵字相似度作為藝人分數的依據，
     避免因藝人資訊缺失而將熱門同名歌曲誤判為正確結果。
+
+    artist_confirmed 表示候選歌曲是否由「歌名 + 藝人」查詢找到。
+    搜尋引擎認得藝人別名（如 aMEI → 張惠妹），此時即使字串不像也不扣分；
+    若僅由純歌名查詢找到且藝人不符，則視為同名的其他歌曲並降低分數。
     """
     result_name = candidate.get("trackName", "")
     result_artist = candidate.get("artistName", "")
     result_album = candidate.get("collectionName", "")
 
     n_score = _name_score(search_name, result_name)
+    artist_mismatch = False
 
     if original_artist in _VARIOUS_ARTISTS:
         # Various Artists：用專輯關鍵字相似度替代固定中性分
@@ -200,15 +215,22 @@ def _score_candidate(
         else:
             a_score = 0.5
     else:
-        a_score = max(
-            _similarity(v, result_artist) for v in _artist_variants(original_artist)
-        )
+        variants = _artist_variants(original_artist)
+        a_score = max(_similarity(v, result_artist) for v in variants)
+        # KKBOX 有時以節目或原聲帶名稱作為演出者（如「天賜的聲音」），
+        # 出現在結果專輯名稱中即視為相符
+        if result_album and any(len(v) >= 2 and v in result_album for v in variants):
+            a_score = max(a_score, 0.8)
+        artist_mismatch = not artist_confirmed and a_score < _ARTIST_MISMATCH_THRESHOLD
 
     score = n_score * 0.65 + a_score * 0.35
 
     # 若搜尋歌名不含非原始版本關鍵字，但比對結果含有，則降低分數
     if _NON_ORIGINAL_RE.search(result_name) and not _NON_ORIGINAL_RE.search(search_name):
         score *= 0.7
+
+    if artist_mismatch:
+        score *= _ARTIST_MISMATCH_PENALTY
 
     return score
 
@@ -294,8 +316,9 @@ async def match_song(
 
     搜尋順序：
     1. 核心歌名 + 各藝人變體
-    2. 原始歌名 + 各藝人變體（若與策略1不同）
-    3. 核心歌名（無藝人，適用 Various Artists）
+    2. 主標 + 各藝人變體（「歌名 - 副標」格式時）
+    3. 原始歌名 + 各藝人變體（若與策略1不同）
+    4. 核心歌名（無藝人，適用 Various Artists）
     找到信心分數 ≥ 0.8 時提前結束。
     """
     stripped = _strip_song_name(song.name)
@@ -305,6 +328,11 @@ async def match_song(
     queries: list[tuple[str, str]] = []
     for av in artist_vars:
         queries.append((stripped, av))
+    # 「甲乙丙丁 - 你我怎麼兩清」：Apple Music 上可能只有主標（甲乙丙丁Strangers）
+    head = _SUBTITLE_SEP_RE.split(stripped, maxsplit=1)[0].strip()
+    if head and head != stripped:
+        for av in artist_vars:
+            queries.append((head, av))
     if stripped != song.name:
         for av in artist_vars:
             queries.append((song.name, av))
@@ -332,7 +360,10 @@ async def match_song(
 
         candidates = await _search(term, client, country, limit, dev_token)
         for c in candidates:
-            score = _score_candidate(search_name, song.artist, c, song.album)
+            score = _score_candidate(
+                search_name, song.artist, c, song.album,
+                artist_confirmed=bool(artist_q),
+            )
             if score > best_score:
                 best_score = score
                 best_candidate = c
