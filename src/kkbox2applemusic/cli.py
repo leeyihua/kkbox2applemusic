@@ -278,7 +278,7 @@ def convert(
 
     使用 Apple Music API 可獲得更精確的歌曲名稱，提高匯入成功率：
 
-        kkbox2applemusic playlist.kbl --key-file AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --team-id XXXXXXXXXX
+        kkbox2applemusic convert playlist.kbl --key-file AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --team-id XXXXXXXXXX
     """
     if not kbl_file.exists():
         console.print(f"[red]錯誤：找不到檔案 {kbl_file}[/red]")
